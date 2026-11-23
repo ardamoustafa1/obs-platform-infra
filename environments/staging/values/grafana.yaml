@@ -1,0 +1,13 @@
+replicas: 2
+resources:
+  requests: {cpu: 500m, memory: 512Mi}
+  limits: {cpu: "2", memory: 2Gi}
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - topologyKey: kubernetes.io/hostname
+        labelSelector:
+          matchLabels: {app.kubernetes.io/name: grafana}
+sidecar:
+  dashboards: {enabled: true, searchNamespace: ALL}
+

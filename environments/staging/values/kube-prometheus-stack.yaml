@@ -1,0 +1,33 @@
+prometheusOperator:
+  podDisruptionBudget: {enabled: true, minAvailable: 1}
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+prometheus:
+  podDisruptionBudget: {enabled: true, minAvailable: 1}
+  prometheusSpec:
+    replicas: 2
+    podAntiAffinity: hard
+    resources:
+      requests: {cpu: "1", memory: 4Gi}
+      limits: {cpu: "4", memory: 8Gi}
+alertmanager:
+  podDisruptionBudget: {enabled: true, minAvailable: 1}
+  alertmanagerSpec:
+    replicas: 3
+    retention: 120h
+    podAntiAffinity: hard
+    resources:
+      requests: {cpu: 200m, memory: 256Mi}
+      limits: {cpu: "1", memory: 1Gi}
+kube-state-metrics:
+  replicas: 2
+  podDisruptionBudget: {enabled: true, minAvailable: 1}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+prometheus-node-exporter:
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 250m, memory: 128Mi}
+

@@ -1,0 +1,84 @@
+name: Terraform PR
+
+on:
+  pull_request:
+    paths:
+      - "**/*.tf"
+      - "**/*.yaml"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    name: Plan ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - environment: dev
+            kubeconfig_secret: KUBECONFIG_DEV
+            tfvars_secret: TFVARS_DEV
+          - environment: staging
+            kubeconfig_secret: KUBECONFIG_STAGING
+            tfvars_secret: TFVARS_STAGING
+          - environment: prod
+            kubeconfig_secret: KUBECONFIG_PROD
+            tfvars_secret: TFVARS_PROD
+    concurrency:
+      group: terraform-plan-${{ matrix.environment }}-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.13.3
+      - name: Materialize runtime inputs
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets[matrix.kubeconfig_secret] }}
+          TFVARS_JSON: ${{ secrets[matrix.tfvars_secret] }}
+        run: |
+          test -n "$KUBECONFIG_CONTENT"
+          test -n "$TFVARS_JSON"
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBECONFIG_CONTENT" > "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$TFVARS_JSON" > "environments/${{ matrix.environment }}/ci.auto.tfvars.json"
+          printf 'TF_VAR_kubeconfig_path=%s\n' "$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: Format
+        run: terraform fmt -recursive -check
+      - name: Initialize
+        run: terraform -chdir=environments/${{ matrix.environment }} init -input=false
+      - name: Validate
+        run: terraform -chdir=environments/${{ matrix.environment }} validate
+      - name: Plan
+        run: |
+          set -o pipefail
+          terraform -chdir=environments/${{ matrix.environment }} plan -input=false -no-color -out=plan.tfplan
+          terraform -chdir=environments/${{ matrix.environment }} show -no-color plan.tfplan > "$RUNNER_TEMP/plan.txt"
+      - name: Comment plan
+        uses: actions/github-script@v8
+        env:
+          PLAN_FILE: ${{ runner.temp }}/plan.txt
+          PLAN_ENV: ${{ matrix.environment }}
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = `<!-- terraform-plan:${process.env.PLAN_ENV} -->`;
+            let plan = fs.readFileSync(process.env.PLAN_FILE, 'utf8');
+            if (plan.length > 60000) plan = `${plan.slice(0, 60000)}\n... output truncated`;
+            const body = `${marker}\n### Terraform plan — ${process.env.PLAN_ENV}\n<details><summary>Planı göster</summary>\n\n\`\`\`hcl\n${plan}\n\`\`\`\n</details>`;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+

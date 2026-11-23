@@ -1,0 +1,19 @@
+query:
+  replicaCount: 1
+  autoscaling: {enabled: true, minReplicas: 1, maxReplicas: 3, targetCPU: 70, targetMemory: 75}
+  pdb: {create: true, minAvailable: 0}
+  resources:
+    requests: {cpu: 200m, memory: 512Mi}
+    limits: {cpu: "1", memory: 2Gi}
+storegateway:
+  replicaCount: 1
+  pdb: {create: true, minAvailable: 0}
+  resources:
+    requests: {cpu: 200m, memory: 512Mi}
+    limits: {cpu: "1", memory: 2Gi}
+compactor:
+  resources:
+    requests: {cpu: 200m, memory: 512Mi}
+    limits: {cpu: "1", memory: 2Gi}
+metrics: {enabled: true, serviceMonitor: {enabled: true}}
+

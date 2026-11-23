@@ -1,0 +1,60 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/*.tf"
+      - "**/*.yaml"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: Apply ${{ matrix.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.approval_environment }}
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - environment: dev
+            approval_environment: apply-dev
+            kubeconfig_secret: KUBECONFIG_DEV
+            tfvars_secret: TFVARS_DEV
+          - environment: staging
+            approval_environment: apply-staging
+            kubeconfig_secret: KUBECONFIG_STAGING
+            tfvars_secret: TFVARS_STAGING
+          - environment: prod
+            approval_environment: apply-production
+            kubeconfig_secret: KUBECONFIG_PROD
+            tfvars_secret: TFVARS_PROD
+    concurrency:
+      group: terraform-apply-${{ matrix.environment }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.13.3
+      - name: Materialize runtime inputs
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets[matrix.kubeconfig_secret] }}
+          TFVARS_JSON: ${{ secrets[matrix.tfvars_secret] }}
+        run: |
+          test -n "$KUBECONFIG_CONTENT"
+          test -n "$TFVARS_JSON"
+          install -m 600 /dev/null "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$KUBECONFIG_CONTENT" > "$RUNNER_TEMP/kubeconfig"
+          printf '%s' "$TFVARS_JSON" > "environments/${{ matrix.environment }}/ci.auto.tfvars.json"
+          printf 'TF_VAR_kubeconfig_path=%s\n' "$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+      - name: Initialize
+        run: terraform -chdir=environments/${{ matrix.environment }} init -input=false
+      - name: Apply reviewed configuration
+        run: |
+          terraform -chdir=environments/${{ matrix.environment }} plan -input=false -out=apply.tfplan
+          terraform -chdir=environments/${{ matrix.environment }} apply -input=false -auto-approve apply.tfplan
+

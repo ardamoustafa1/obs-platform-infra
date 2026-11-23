@@ -1,0 +1,15 @@
+replicas: 2
+resources:
+  requests: {cpu: 200m, memory: 256Mi}
+  limits: {cpu: "1", memory: 1Gi}
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchLabels: {app.kubernetes.io/name: grafana}
+sidecar:
+  dashboards: {enabled: true, searchNamespace: ALL}
+
